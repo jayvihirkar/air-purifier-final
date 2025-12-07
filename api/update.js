@@ -1,11 +1,3 @@
-export const config = {
-  runtime: "nodejs20.x",
-  api: {
-    bodyParser: {
-      sizeLimit: "1mb"
-    }
-  }
-};
 import fs from 'fs';
 import path from 'path';
 
