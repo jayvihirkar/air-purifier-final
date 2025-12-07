@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Air Purifier Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #000000;
+            font-family: 'Inter', sans-serif;
+            color: #E5E7EB;
+        }
+        .dither-border {
+            border: 1px solid #1a1a1a;
+            box-shadow:
+                1px 1px 0px #0c0c0c, -1px -1px 0px #0c0c0c,
+                2px 2px 0px #1a1a1a, -2px -2px 0px #1a1a1a;
+        }
+        .minimal-button {
+            border: 1px solid #333;
+            background-color: #27272a;
+            transition: all 0.1s;
+        }
+        .minimal-button:hover {
+            background-color: #111;
+            border-color: #f59e0b;
+        }
+        .aqi-card {
+            background-color: #0c0c0c;
+        }
+        .chat-box::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-box::-webkit-scrollbar-thumb {
+            background-color: #444;
+            border-radius: 3px;
+        }
+        .chat-box::-webkit-scrollbar-track {
+            background-color: #111;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 flex items-center justify-center">
+
+    <!-- Main Application Container -->
+    <div id="app" class="w-full max-w-4xl p-0 dither-border shadow-none">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- COLUMN 1 & 2: Main Data and Controls -->
+            <div class="lg:col-span-2 space-y-6">
+
+                <!-- HEADER & STATUS -->
+                <header class="p-6 aqi-card">
+                    <h1 class="text-xl sm:text-2xl font-mono tracking-widest text-white mb-1">
+                        AI powered AQI monitoring <span class="text-amber-500 text-sm">v1.0</span>
+                    </h1>
+                    <p class="text-gray-500 text-xs tracking-wider">
+                        SECURE CONNECTION | DEVICE ID:
+                        <span id="userIdDisplay" class="text-gray-300">Connecting...</span>
+                    </p>
+                    <p class="text-gray-600 text-[11px] mt-1">
+                        Last update:
+                        <span id="lastUpdatedDisplay" class="text-gray-400">—</span>
+                    </p>
+                </header>
+
+                <!-- AQI DASHBOARD & ML PREDICTION -->
+                <div class="p-6 aqi-card grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- LIVE AQI CARD -->
+                    <div>
+                        <p class="text-sm font-light text-gray-500 mb-2">LIVE READING</p>
+                        <div id="aqiCard" class="p-4 dither-border rounded-none" style="background-color: #111;">
+                            <p class="text-2xl sm:text-4xl font-extrabold" id="currentAQIValue">--</p>
+                            <p class="text-sm tracking-widest" id="currentAQIStatus">-- Status --</p>
+                            <p class="text-xs text-gray-700 mt-2">Dominant Pollutant:
+                                <span id="dominantPollutant">--</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ML PREDICTION CARD -->
+                    <div>
+                        <p class="text-sm font-light text-gray-500 mb-2">30 MIN PREDICTION (ML)</p>
+                        <div class="p-4 dither-border rounded-none" style="background-color: #111;">
+                            <p class="text-2xl sm:text-4xl font-extrabold text-amber-500" id="predictedAQIValue">--</p>
+                            <p class="text-sm tracking-widest text-gray-400" id="predictedAQITrend">-- Trend --</p>
+                            <p class="text-xs text-gray-700 mt-2 italic" id="predictionReason">Model warming up...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROLS (currently UI-only; can be wired to ESP32 later) -->
+                <div class="p-6 aqi-card">
+                    <p class="text-sm font-light text-gray-500 mb-4">PURIFIER CONTROLS (UI STATE)</p>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <!-- POWER TOGGLE -->
+                        <button id="togglePowerBtn"
+                                class="flex-1 minimal-button py-3 font-mono text-lg tracking-wider rounded-none bg-zinc-800 text-white"
+                                data-status="false">
+                            <span id="powerStatusText">POWER OFF</span>
+                        </button>
+
+                        <!-- MODE SWITCH -->
+                        <div class="flex-1 flex gap-2">
+                            <button id="modeAutoBtn"
+                                    class="flex-1 minimal-button py-3 text-sm rounded-none bg-amber-600 text-black"
+                                    data-mode="Auto">
+                                AUTO MODE
+                            </button>
+                            <button id="modeManualBtn"
+                                    class="flex-1 minimal-button py-3 text-sm rounded-none bg-zinc-800 text-gray-400"
+                                    data-mode="Manual">
+                                MANUAL MODE
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-700 mt-4">
+                        Current Mode:
+                        <span id="currentModeDisplay" class="text-white">Auto</span>
+                    </p>
+                    <p class="text-[11px] text-gray-600 mt-1">
+                        (Right now this only affects recommendations. You can later wire it to send control commands to the ESP32 via the backend.)
+                    </p>
+                </div>
+            </div>
+
+            <!-- COLUMN 3: AI INTERACTION -->
+            <div class="lg:col-span-1 aqi-card p-6 flex flex-col h-full lg:min-h-96">
+                <p class="text-sm font-light text-gray-500 mb-4">AI ADVISOR</p>
+
+                <!-- Initial Suggestion -->
+                <div id="initialSuggestionDiv" class="p-3 mb-4 text-xs bg-[#111] dither-border rounded-none">
+                    <p class="text-amber-500 font-mono mb-1">:: System Tip</p>
+                    <div id="initialSuggestionContent">
+                        <p class="text-gray-500">Waiting for first sensor reading...</p>
+                    </div>
+                </div>
+
+                <!-- AI Chat Output -->
+                <div id="aiResponseDiv"
+                     class="chat-box flex-grow overflow-y-auto space-y-4 text-sm mb-4 p-2 rounded-none dither-border"
+                     style="background-color: #111;">
+                    <p class="text-amber-500 font-mono">:: Chat History</p>
+                </div>
+
+                <!-- User Input -->
+                <div id="chatInputContainer" class="mt-auto">
+                    <input type="text" id="userInput"
+                           placeholder="Ask the AI about your air quality..."
+                           class="w-full p-2 mb-2 bg-black text-white border border-gray-700 focus:border-amber-500 outline-none rounded-none text-xs">
+                    <button id="askAIBtn"
+                            class="minimal-button w-full py-2 text-xs font-mono rounded-none bg-zinc-800 text-amber-500"
+                            disabled>
+                        ASK AI
+                    </button>
+                    <p class="text-[10px] text-gray-600 mt-1">
+                        Uses your latest AQI, trend and ML prediction to answer.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL STATE ---
+        let liveAQIData = null;
+        let appSettings = { isOn: false, mode: 'Auto' };
+        let initialTipShown = false;
+        const POLL_INTERVAL_MS = 4000;
+
+        // --- MOCK FALLBACK (if backend not yet sending anything) ---
+        const mockAQIData = {
+            currentAQI: 85,
+            airStatus: 'MODERATE',
+            dominantPollutant: 'PM2.5',
+            prediction: {
+                next30MinAQI: 72,
+                trend: 'Improving',
+                reason: 'Current AQI is slowly decreasing based on the last few readings.'
+            },
+            deviceId: 'mock-device',
+            lastUpdated: Date.now()
+        };
+
+        // --- UTILITY: AQI STYLING ---
+        function getAQIColorClass(aqi) {
+            if (aqi >= 201) return 'text-purple-500';
+            if (aqi >= 151) return 'text-red-500';
+            if (aqi >= 101) return 'text-orange-500';
+            if (aqi >= 51)  return 'text-yellow-400';
+            return 'text-amber-500';
+        }
+
+        function getAQIStatus(aqi) {
+            if (aqi >= 201) return 'VERY UNHEALTHY';
+            if (aqi >= 151) return 'UNHEALTHY';
+            if (aqi >= 101) return 'UNHEALTHY (SENSITIVE GROUPS)';
+            if (aqi >= 51)  return 'MODERATE';
+            return 'GOOD';
+        }
+
+        function updateAQICard(aqi, status) {
+            const card = document.getElementById('aqiCard');
+            const baseClasses = 'p-4 dither-border rounded-none';
+            const colorClass = getAQIColorClass(aqi);
+            card.className = `${baseClasses} ${colorClass}`;
+            document.getElementById('currentAQIStatus').textContent = status;
+        }
+
+        // --- UI STATE (Power + Mode) ---
+        function updateUISettings() {
+            const toggleBtn = document.getElementById('togglePowerBtn');
+            const powerStatusText = document.getElementById('powerStatusText');
+            const modeAutoBtn = document.getElementById('modeAutoBtn');
+            const modeManualBtn = document.getElementById('modeManualBtn');
+            const currentModeDisplay = document.getElementById('currentModeDisplay');
+
+            if (appSettings.isOn) {
+                toggleBtn.classList.remove('bg-zinc-800', 'text-white');
+                toggleBtn.classList.add('bg-amber-600', 'text-black', 'shadow-amber-900');
+                powerStatusText.textContent = 'POWER ON';
+            } else {
+                toggleBtn.classList.remove('bg-amber-600', 'text-black', 'shadow-amber-900');
+                toggleBtn.classList.add('bg-zinc-800', 'text-white');
+                powerStatusText.textContent = 'POWER OFF';
+            }
+
+            modeAutoBtn.classList.remove('bg-amber-600', 'text-black');
+            modeManualBtn.classList.remove('bg-amber-600', 'text-black');
+            modeAutoBtn.classList.add('bg-zinc-800', 'text-gray-400');
+            modeManualBtn.classList.add('bg-zinc-800', 'text-gray-400');
+
+            if (appSettings.mode === 'Auto') {
+                modeAutoBtn.classList.remove('bg-zinc-800', 'text-gray-400');
+                modeAutoBtn.classList.add('bg-amber-600', 'text-black');
+            } else {
+                modeManualBtn.classList.remove('bg-zinc-800', 'text-gray-400');
+                modeManualBtn.classList.add('bg-amber-600', 'text-black');
+            }
+
+            currentModeDisplay.textContent = appSettings.mode;
+        }
+
+        // --- LIVE DATA -> UI ---
+        function applyLiveAQIData(data) {
+            liveAQIData = data;
+
+            // Number + status
+            const aqi = data.currentAQI ?? 0;
+            const status = data.airStatus || getAQIStatus(aqi);
+
+            document.getElementById('currentAQIValue').textContent = aqi.toFixed
+                ? aqi.toFixed(0)
+                : aqi;
+            document.getElementById('dominantPollutant').textContent =
+                data.dominantPollutant || 'MQ135 / Composite';
+            updateAQICard(aqi, status);
+
+            // Prediction
+            if (data.prediction) {
+                document.getElementById('predictedAQIValue').textContent =
+                    data.prediction.next30MinAQI?.toFixed
+                        ? data.prediction.next30MinAQI.toFixed(0)
+                        : data.prediction.next30MinAQI ?? '--';
+                document.getElementById('predictedAQITrend').textContent =
+                    `Trend: ${data.prediction.trend || 'Unknown'}`;
+                document.getElementById('predictionReason').textContent =
+                    data.prediction.reason || 'Model did not provide details.';
+            }
+
+            // Device + timestamp
+            document.getElementById('userIdDisplay').textContent = data.deviceId || 'ESP32';
+            if (data.lastUpdated) {
+                const d = new Date(data.lastUpdated);
+                document.getElementById('lastUpdatedDisplay').textContent = d.toLocaleTimeString();
+            }
+
+            // Trigger initial tip once
+            if (!initialTipShown) {
+                initialTipShown = true;
+                generateInitialAISuggestions();
+            }
+
+            // Enable AI button
+            document.getElementById('askAIBtn').disabled = false;
+        }
+
+        // --- POLLING BACKEND FOR STATE ---
+        async function fetchLatestState() {
+            try {
+                const res = await fetch('/api/state');
+                if (!res.ok) throw new Error('State not ready');
+                const data = await res.json();
+                applyLiveAQIData(data);
+            } catch (err) {
+                console.warn('Using mock AQI data (backend not ready yet):', err.message);
+                applyLiveAQIData(mockAQIData);
+            }
+        }
+
+        // --- AI CALL HELPER (Backend /api/ai) ---
+        async function callAIBackend(userText, targetDiv, isInitial = false) {
+            const loading = document.createElement('p');
+            loading.className = 'text-amber-500 font-mono text-xs';
+            loading.textContent = isInitial ? ':: Generating initial tip...' : ':: Thinking...';
+            targetDiv.appendChild(loading);
+            if (!isInitial) {
+                targetDiv.scrollTop = targetDiv.scrollHeight;
+            }
+
+            try {
+                const res = await fetch('/api/ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userText,
+                        liveAQIData,
+                        isInitial
+                    })
+                });
+                const data = await res.json();
+                loading.remove();
+
+                const aiEl = document.createElement('p');
+                aiEl.className = 'text-white whitespace-pre-wrap font-sans text-xs';
+                aiEl.textContent = data.answer || 'No response from AI.';
+                targetDiv.appendChild(aiEl);
+                if (!isInitial) {
+                    targetDiv.scrollTop = targetDiv.scrollHeight;
+                }
+            } catch (err) {
+                loading.remove();
+                console.error('AI error:', err);
+                const errEl = document.createElement('p');
+                errEl.className = 'text-red-500 text-xs';
+                errEl.textContent = ':: Error talking to AI. Check backend /api/ai.';
+                targetDiv.appendChild(errEl);
+            }
+        }
+
+        // --- INITIAL TIP ---
+        async function generateInitialAISuggestions() {
+            const target = document.getElementById('initialSuggestionContent');
+            target.innerHTML = '';
+            const prompt = 'Give one short, practical safety or usage tip based on the current indoor AQI.';
+            await callAIBackend(prompt, target, true);
+        }
+
+        // --- CHAT HANDLER ---
+        async function handleAIChat() {
+            const inputEl = document.getElementById('userInput');
+            const text = inputEl.value.trim();
+            if (!text) return;
+
+            const chatDiv = document.getElementById('aiResponseDiv');
+
+            const userEl = document.createElement('p');
+            userEl.className = 'text-amber-500 font-mono text-right text-xs';
+            userEl.textContent = `You: ${text}`;
+            chatDiv.appendChild(userEl);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+            inputEl.value = '';
+
+            await callAIBackend(text, chatDiv, false);
+        }
+
+        // --- EVENT LISTENERS ---
+        document.getElementById('togglePowerBtn').addEventListener('click', () => {
+            appSettings.isOn = !appSettings.isOn;
+            updateUISettings();
+            // TODO: send to backend /api/control if you want ESP32 control
+        });
+
+        document.getElementById('modeAutoBtn').addEventListener('click', () => {
+            appSettings.mode = 'Auto';
+            updateUISettings();
+        });
+
+        document.getElementById('modeManualBtn').addEventListener('click', () => {
+            appSettings.mode = 'Manual';
+            updateUISettings();
+        });
+
+        document.getElementById('askAIBtn').addEventListener('click', handleAIChat);
+        document.getElementById('userInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !document.getElementById('askAIBtn').disabled) {
+                handleAIChat();
+            }
+        });
+
+        // --- BOOTSTRAP ---
+        window.onload = () => {
+            updateUISettings();
+            fetchLatestState();
+            setInterval(fetchLatestState, POLL_INTERVAL_MS);
+        };
+    </script>
+</body>
+</html>
