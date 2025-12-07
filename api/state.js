@@ -1,6 +1,7 @@
 export const config = {
   runtime: "nodejs20.x"
 };
+
 import fs from 'fs';
 
 const TMP_FILE = '/tmp/latest-reading.json';
