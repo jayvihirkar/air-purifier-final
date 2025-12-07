@@ -1,39 +1,33 @@
+export const runtime = "nodejs";
 import fs from "fs";
 
 const TMP_FILE = "/tmp/latest-reading.json";
 
-function getAirStatus(aqi) {
-  if (aqi >= 201) return "VERY UNHEALTHY";
-  if (aqi >= 151) return "UNHEALTHY";
-  if (aqi >= 101) return "UNHEALTHY (SENSITIVE GROUPS)";
-  if (aqi >= 51) return "MODERATE";
-  return "GOOD";
-}
-
 export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Use POST" });
+  }
+
   try {
-    if (!fs.existsSync(TMP_FILE)) {
-      return res.status(404).json({ error: "No sensor data yet." });
-    }
+    const body = req.body || {};
 
-    const reading = JSON.parse(fs.readFileSync(TMP_FILE, "utf8"));
-
-    const prediction = {
-      next30MinAQI: reading.aqi + 5,
-      trend: reading.aqi < 80 ? "Improving" : "Worsening",
-      reason: "Simple rule-based prediction"
+    const reading = {
+      aqi: Number(body.aqi ?? 0),
+      ppm: Number(body.ppm ?? 0),
+      adc: Number(body.adc ?? 0),
+      voltage: Number(body.voltage ?? 0),
+      fan1: !!body.fan1,
+      fan2: !!body.fan2,
+      autoMode: !!body.autoMode,
+      deviceId: body.deviceId || "esp32",
+      timestamp: Date.now()
     };
 
-    return res.status(200).json({
-      currentAQI: reading.aqi,
-      airStatus: getAirStatus(reading.aqi),
-      dominantPollutant: "MQ135 Composite",
-      prediction,
-      deviceId: reading.deviceId,
-      lastUpdated: reading.timestamp
-    });
+    fs.writeFileSync(TMP_FILE, JSON.stringify(reading));
+
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("state error:", err);
+    console.error("update error:", err);
     return res.status(500).json({ error: "internal error" });
   }
 }
