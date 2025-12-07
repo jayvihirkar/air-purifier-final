@@ -1,11 +1,15 @@
-// api/update.js
+import fs from 'fs';
+import path from 'path';
 
-let latestReading = global.latestReading || null;
-let history = global.history || [];
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '1mb'
+    }
+  }
+};
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
+const TMP_FILE = '/tmp/latest-reading.json';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -23,24 +27,16 @@ export default async function handler(req, res) {
       fan1: !!body.fan1,
       fan2: !!body.fan2,
       autoMode: !!body.autoMode,
-      deviceId: body.deviceId || 'esp32-1',
+      deviceId: body.deviceId || 'esp32',
       timestamp: Date.now()
     };
 
-    latestReading = reading;
-    history.push(reading);
-    if (history.length > 120) history.shift();
+    // Save to /tmp folder (persists for current instance)
+    fs.writeFileSync(TMP_FILE, JSON.stringify(reading));
 
-    // Persist in global for warm instances
-    global.latestReading = latestReading;
-    global.history = history;
-
-    // For now we don't send control commands.
-    // Later you can compute something here and return
-    // control instructions to ESP32.
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('Error in /api/update:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('update error:', err);
+    return res.status(500).json({ error: 'internal error' });
   }
 }
