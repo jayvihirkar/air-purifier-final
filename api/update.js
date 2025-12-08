@@ -1,7 +1,6 @@
-// /api/update.js
-const supabase = require("./_supabase");
+import { supabase } from "./_supabase.js";
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Use POST" });
 
@@ -23,9 +22,9 @@ module.exports = async function handler(req, res) {
 
     if (error) throw error;
 
-    return res.status(200).json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     console.error("UPDATE ERROR:", err);
-    return res.status(500).json({ error: "failed", details: err.message });
+    return res.status(500).json({ error: err.message });
   }
-};
+}
