@@ -1,8 +1,11 @@
+// api/state.js
 export const runtime = "nodejs";
 
 import fs from "fs";
 
 const TMP_FILE = "/tmp/latest-reading.json";
+const LAG_FILE = "/tmp/lag.json";
+
 const ML_URL = "https://air-purifier-ml-backend.onrender.com/predict";
 
 function getAirStatus(aqi) {
@@ -13,44 +16,49 @@ function getAirStatus(aqi) {
   return "GOOD";
 }
 
-async function getMlPrediction(reading) {
+async function getMlPrediction(lags) {
   try {
+    const now = new Date();
+    const hour = now.getHours();
+    const weekday = now.getDay();
+
+    const payload = {
+      hour,
+      weekday,
+      lag_1: lags.lag_1 ?? 0,
+      lag_2: lags.lag_2 ?? 0,
+      lag_3: lags.lag_3 ?? 0
+    };
+
     const resp = await fetch(ML_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ppm: reading.ppm,
-        aqi: reading.aqi,
-        voltage: reading.voltage,
-        adc: reading.adc
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!resp.ok) {
-      console.error("ML API Error:", resp.status);
-      return defaultPrediction(reading);
+      console.error("ML backend error:", resp.status);
+      return fallbackPrediction(lags);
     }
 
     const data = await resp.json();
 
     return {
-      next30MinAQI: data.predicted_aqi ?? reading.aqi + 5,
-      trend:
-        data.trend ??
-        (data.predicted_aqi > reading.aqi ? "Worsening" : "Improving"),
-      reason: data.reason ?? "ML prediction service returned minimal data."
+      next30MinAQI: data.predicted_aqi,
+      trend: data.trend,
+      reason: data.reason
     };
   } catch (err) {
-    console.error("ML FETCH ERROR:", err);
-    return defaultPrediction(reading);
+    console.error("ML fetch failed:", err);
+    return fallbackPrediction(lags);
   }
 }
 
-function defaultPrediction(reading) {
+function fallbackPrediction(lags) {
   return {
-    next30MinAQI: reading.aqi + 5,
-    trend: reading.aqi < 80 ? "Improving" : "Worsening",
-    reason: "Fallback rule-based prediction (ML unavailable)."
+    next30MinAQI: Math.max(0, (lags.lag_1 ?? 0) + 5),
+    trend: (lags.lag_1 ?? 0) < 80 ? "Improving" : "Worsening",
+    reason: "Fallback prediction (ML offline)"
   };
 }
 
@@ -61,20 +69,24 @@ export default async function handler(req, res) {
     }
 
     const reading = JSON.parse(fs.readFileSync(TMP_FILE, "utf8"));
+    let lags = { lag_1: null, lag_2: null, lag_3: null };
 
-    const prediction = await getMlPrediction(reading);
+    if (fs.existsSync(LAG_FILE)) {
+      lags = JSON.parse(fs.readFileSync(LAG_FILE, "utf8"));
+    }
+
+    const prediction = await getMlPrediction(lags);
 
     return res.status(200).json({
       currentAQI: reading.aqi,
       airStatus: getAirStatus(reading.aqi),
-      dominantPollutant: "MQ135 Sensor",
+      dominantPollutant: "MQ135 Composite",
       prediction,
       deviceId: reading.deviceId,
       lastUpdated: reading.timestamp
     });
   } catch (err) {
-    console.error("state.js error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("state error:", err);
+    return res.status(500).json({ error: "internal error" });
   }
 }
-
