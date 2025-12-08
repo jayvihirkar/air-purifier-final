@@ -1,4 +1,5 @@
 // api/update.js
+export const runtime = "nodejs";
 import fs from "fs";
 
 const TMP_FILE = "/tmp/latest-reading.json";
