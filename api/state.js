@@ -1,5 +1,4 @@
-// /api/state.js
-const supabase = require("./_supabase");
+import { supabase } from "./_supabase.js";
 
 const ML_URL = "https://air-purifier-ml-backend.onrender.com/predict";
 
@@ -31,13 +30,12 @@ async function mlPredict(aqi) {
 
     const json = await resp.json();
     return json.prediction ?? aqi;
-  } catch (err) {
-    console.log("ML error:", err);
+  } catch {
     return aqi;
   }
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     const { data, error } = await supabase
       .from("readings")
@@ -51,7 +49,7 @@ module.exports = async function handler(req, res) {
 
     const predicted = await mlPredict(data.aqi);
 
-    return res.status(200).json({
+    return res.json({
       currentAQI: data.aqi,
       airStatus: getAirStatus(data.aqi),
       dominantPollutant: "MQ135 Composite",
@@ -67,4 +65,4 @@ module.exports = async function handler(req, res) {
     console.error("STATE ERROR:", err);
     return res.status(500).json({ error: err.message });
   }
-};
+}
