@@ -1,8 +1,8 @@
-// /api/state.js (CommonJS)
+// /api/state.js
+const supabase = require("./_supabase");
 
 const ML_URL = "https://air-purifier-ml-backend.onrender.com/predict";
 
-// Helper
 function getAirStatus(aqi) {
   if (aqi >= 201) return "VERY UNHEALTHY";
   if (aqi >= 151) return "UNHEALTHY";
@@ -11,70 +11,60 @@ function getAirStatus(aqi) {
   return "GOOD";
 }
 
-// ML prediction requester
-async function getMLPrediction(lags) {
+async function mlPredict(aqi) {
   try {
     const now = new Date();
 
-    const payload = {
+    const body = {
       hour: now.getHours(),
       weekday: now.getDay(),
-      lag_1: lags.lag1 || 0,
-      lag_2: lags.lag2 || 0,
-      lag_3: lags.lag3 || 0,
+      lag_1: aqi,
+      lag_2: aqi,
+      lag_3: aqi,
     };
 
     const resp = await fetch(ML_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
-    const data = await resp.json();
-    return data.prediction ?? null;
+    const json = await resp.json();
+    return json.prediction ?? aqi;
   } catch (err) {
-    console.error("ML Error:", err);
-    return null;
+    console.log("ML error:", err);
+    return aqi;
   }
 }
 
 module.exports = async function handler(req, res) {
   try {
-    const reading = global.latestReading;
+    const { data, error } = await supabase
+      .from("readings")
+      .select("*")
+      .order("id", { ascending: false })
+      .limit(1)
+      .single();
 
-    if (!reading) {
-      return res.status(404).json({ error: "No sensor data yet." });
-    }
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "No sensor data" });
 
-    const lags = {
-      lag1: reading.aqi,
-      lag2: reading.aqi,
-      lag3: reading.aqi,
-    };
-
-    const predicted = await getMLPrediction(lags);
-
-    const prediction = {
-      next30MinAQI: predicted ?? reading.aqi,
-      trend:
-        predicted !== null
-          ? predicted > reading.aqi
-            ? "Worsening"
-            : "Improving"
-          : "Unknown",
-      reason: predicted !== null ? "ML model prediction" : "No ML response",
-    };
+    const predicted = await mlPredict(data.aqi);
 
     return res.status(200).json({
-      currentAQI: reading.aqi,
-      airStatus: getAirStatus(reading.aqi),
+      currentAQI: data.aqi,
+      airStatus: getAirStatus(data.aqi),
       dominantPollutant: "MQ135 Composite",
-      prediction,
-      deviceId: reading.deviceId,
-      lastUpdated: reading.timestamp,
+      prediction: {
+        next30MinAQI: predicted,
+        trend: predicted > data.aqi ? "Worsening" : "Improving",
+        reason: "ML prediction",
+      },
+      deviceId: data.device_id,
+      lastUpdated: data.created_at,
     });
   } catch (err) {
-    console.error("STATE error:", err);
-    return res.status(500).json({ error: "internal error" });
+    console.error("STATE ERROR:", err);
+    return res.status(500).json({ error: err.message });
   }
 };
