@@ -1,45 +1,31 @@
-// /api/update.js  (CommonJS)
-
-module.exports.config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "1mb",
-    },
-  },
-};
-
-// Global memory store
-if (!global.latestReading) {
-  global.latestReading = null;
-}
+// /api/update.js
+const supabase = require("./_supabase");
 
 module.exports = async function handler(req, res) {
-  console.log("UPDATE endpoint hit", req.method, req.body);
-
-  if (req.method !== "POST") {
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Use POST" });
-  }
 
   try {
-    const body = req.body || {};
+    const data = req.body;
 
-    const reading = {
-      aqi: Number(body.aqi ?? 0),
-      ppm: Number(body.ppm ?? 0),
-      adc: Number(body.adc ?? 0),
-      voltage: Number(body.voltage ?? 0),
-      fan1: !!body.fan1,
-      fan2: !!body.fan2,
-      autoMode: !!body.autoMode,
-      deviceId: body.deviceId || "esp32",
-      timestamp: Date.now(),
-    };
+    const { error } = await supabase
+      .from("readings")
+      .insert({
+        aqi: data.aqi,
+        ppm: data.ppm,
+        adc: data.adc,
+        voltage: data.voltage,
+        fan1: data.fan1,
+        fan2: data.fan2,
+        automode: data.autoMode,
+        device_id: data.deviceId || "esp32",
+      });
 
-    global.latestReading = reading;
+    if (error) throw error;
 
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("UPDATE handler ERROR:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("UPDATE ERROR:", err);
+    return res.status(500).json({ error: "failed", details: err.message });
   }
 };
