@@ -1,10 +1,8 @@
-// /api/state.js
-
-export const runtime = "nodejs";
+// /api/state.js (CommonJS)
 
 const ML_URL = "https://air-purifier-ml-backend.onrender.com/predict";
 
-// Helper: Convert AQI → Text
+// Helper
 function getAirStatus(aqi) {
   if (aqi >= 201) return "VERY UNHEALTHY";
   if (aqi >= 151) return "UNHEALTHY";
@@ -13,7 +11,7 @@ function getAirStatus(aqi) {
   return "GOOD";
 }
 
-// Predict future AQI using your ML backend
+// ML prediction requester
 async function getMLPrediction(lags) {
   try {
     const now = new Date();
@@ -35,21 +33,19 @@ async function getMLPrediction(lags) {
     const data = await resp.json();
     return data.prediction ?? null;
   } catch (err) {
-    console.error("ML Prediction Error:", err);
+    console.error("ML Error:", err);
     return null;
   }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   try {
-    // Read latest ESP32 data from RAM
     const reading = global.latestReading;
 
     if (!reading) {
       return res.status(404).json({ error: "No sensor data yet." });
     }
 
-    // Prepare lag values (same AQI for now)
     const lags = {
       lag1: reading.aqi,
       lag2: reading.aqi,
@@ -78,7 +74,7 @@ export default async function handler(req, res) {
       lastUpdated: reading.timestamp,
     });
   } catch (err) {
-    console.error("state error:", err);
+    console.error("STATE error:", err);
     return res.status(500).json({ error: "internal error" });
   }
-}
+};
