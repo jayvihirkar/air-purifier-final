@@ -1,7 +1,8 @@
-export const runtime = "nodejs";
+// api/update.js
 import fs from "fs";
 
 const TMP_FILE = "/tmp/latest-reading.json";
+const LAG_FILE = "/tmp/lag.json";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,7 +24,23 @@ export default async function handler(req, res) {
       timestamp: Date.now()
     };
 
+    // Save main reading
     fs.writeFileSync(TMP_FILE, JSON.stringify(reading));
+
+    // Update lag file
+    let lags = { lag_1: null, lag_2: null, lag_3: null };
+    if (fs.existsSync(LAG_FILE)) {
+      lags = JSON.parse(fs.readFileSync(LAG_FILE, "utf8"));
+    }
+
+    // Shift lag values
+    const newLags = {
+      lag_1: reading.aqi,
+      lag_2: lags.lag_1,
+      lag_3: lags.lag_2
+    };
+
+    fs.writeFileSync(LAG_FILE, JSON.stringify(newLags));
 
     return res.status(200).json({ ok: true });
   } catch (err) {
