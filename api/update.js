@@ -1,8 +1,6 @@
-// /api/update.js
+// /api/update.js  (CommonJS)
 
-export const runtime = "nodejs";
-
-export const config = {
+module.exports.config = {
   api: {
     bodyParser: {
       sizeLimit: "1mb",
@@ -10,12 +8,14 @@ export const config = {
   },
 };
 
-// Global memory store (persists as long as Vercel keeps the function warm)
+// Global memory store
 if (!global.latestReading) {
   global.latestReading = null;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
+  console.log("UPDATE endpoint hit", req.method, req.body);
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Use POST" });
   }
@@ -35,17 +35,11 @@ export default async function handler(req, res) {
       timestamp: Date.now(),
     };
 
-    // Save in RAM so /state can read it
     global.latestReading = reading;
 
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("update error:", err);
-    return res.status(500).json({ error: "internal error" });
+    console.error("UPDATE handler ERROR:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
-}
-
-    console.error("update error:", err);
-    return res.status(500).json({ error: "internal error" });
-  }
-}
+};
